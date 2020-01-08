@@ -183,4 +183,5 @@ Comment out the corresponding "#define" statement if you need to turn these swit
 
 # Variables of NVLevel
 Variables start with "TEST_" in util/options.cc are used to control performance of nvlevel.
-Some of the variables have been abandoned, try not to modify the variables not mentioned in the paper.
+Some variables have been abandoned. 
+Except some variables with clear functions, try not to modify variables not mentioned in the paper.
