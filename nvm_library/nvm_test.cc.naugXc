@@ -1,0 +1,867 @@
+#include "global.h"
+#include "sysnvm.h"
+#include "nvm_manager.h"
+#include "randomizer.h"
+#include "nvm_filesystem.h"
+#include "nvm_library.h"
+#define MAX_MEMORY (1<<20)
+#include <stdlib.h>
+#include <stdio.h>
+#include <fstream>
+#include <iostream>
+//#include "nvskiplist.h"
+#include "table/format.h"
+#include "nvlist.h"
+//#include "nvmemtable.h"
+#include "leveldb/comparator.h"
+#include <string.h>
+#include "arena.h"
+#include "db/dbformat.h"
+#include "leveldb/options.h"
+#include "multitable.h"
+#include "leveldb/iterator.h"
+#include <map>
+#include "skiplist_nonvolatile.h"
+#include "skiplist_kvindram.h"
+#include "trie.h"
+#include "trie.h"
+#include "nvskiplist.h"
+#include "multitable_dram.h"
+#include "nvtrie.h"
+#include "sys/time.h"
+#include "mixedskiplist.h"
+#include "trie_compressed.h"
+
+//using leveldb::nvSkipList;
+//using leveldb::nvMemTable;
+//using leveldb::InternalKeyComparator;
+
+void cleaner(byte* blackbox){
+    return;
+}
+
+Randomizer R;
+NVM_Library* lib = new NVM_Library(1ULL<<32);
+
+struct IntComparator {
+  int operator()(const int a, const int b) const {
+      if (a < b) return -1;
+      if (a == b) return 0;
+      return 1;
+  }
+};
+struct StringComparator {
+  int operator()(const char* a, const char* b) const {
+      if (a == nullptr || b == nullptr){
+          if (a == nullptr) return -1;
+          return 1;
+      }
+      size_t la = strlen(a), lb = strlen(b);
+      if (la != lb)
+          return (la < lb ? -1 : 1);
+      return memcmp(a,b,la);
+  }
+};
+
+
+void alice_test(){
+    NVM_Manager * mng_ = new NVM_Manager(MAX_MEMORY);
+    FakeFS * fs = new FakeFS(mng_);
+    char filename[] = "/home/sagitrs/SagLibrary/alice.txt";
+    char filename2[] = "/home/sagitrs/SagLibrary/blice.txt";
+    char filename3[] = "/home/sagitrs/SagLibrary/clice.txt";
+    string s;
+    FILE* f = fopen(filename,"r");
+    const int MAX_CHAR = 32768;
+    char *buf = new char[MAX_CHAR+1];
+    size_t count = MAX_CHAR;
+    while (count == MAX_CHAR){
+        count = fread(buf,1,MAX_CHAR,f);
+        break;
+        if (count > 0){
+            buf[count] = '\0';
+            string s0(buf);
+            s += s0;
+            //printf("%s",s0.c_str());
+        }
+    }
+    nvFileHandle g = lib->fopen(filename2,"w");
+    for (int i=0;i<100000;++i){
+        lib->fwrite(buf,1,1024,g);
+    }
+
+    //std::cout << s << std::endl;
+//    fs->print();
+//    mng_->print();
+
+    /*
+    fs->rename(filename,filename2);
+    fs->copyFromDiskToNVM(filename);
+    FILE* alice = fopen(filename,"r");
+    nvFileHandle blice = fs->fopen(filename2,"a");
+    while (1){
+        int t = fread(buf,1,MAX_CHAR,alice);
+        if (t > 0)
+            fs->fwrite(buf,1,t,blice);
+        if (t < MAX_CHAR)
+            break;
+    }
+    fs->fread(buf,1,1,blice);
+    fs->print();
+    fs->fclose(blice);
+    blice = fs->fopen(filename2,"r");
+    fs->fseek(blice,167546,SEEK_SET);
+    FILE* clice = fopen(filename3,"w");
+    while (1){
+        int t = fs->fread(buf,1,MAX_CHAR,blice);
+        if (t > 0)
+            fwrite(buf,1,t,clice);
+        if (t < MAX_CHAR)
+            break;
+    }
+
+    fs->print();
+
+    fclose(alice);
+    fs->fclose(blice);
+    fclose(clice);*/
+}
+
+void nvlist_test(){
+    NVM_Manager * mng_ = new NVM_Manager(MAX_MEMORY);
+    leveldb::Options options_;
+    const leveldb::InternalKeyComparator cmp(options_.comparator);
+
+    leveldb::nvKVSkiplist *list = new leveldb::nvKVSkiplist(mng_);
+    char s[] = "sdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkdsdjhladwsfdhfljsdbfdcxnc,vbsvlweiurywep;rawhdsfjkd";
+    char buf[256];
+    for (int i = 0; i < 10000; ++i){
+        sprintf(buf,"%08d",rand() % 100);
+        leveldb::Slice key(buf,8);
+        leveldb::Slice value(s + rand()%100,10);
+        int action = rand() % 3;
+        switch (action) {
+        case 0: // Insert
+            list->Insert(key,value,i,0);
+            printf("Insert : [%s] -> [%s]\n",key.data(),value.ToString().c_str());
+            break;
+        case 1: // Delete
+            list->Insert(key,leveldb::Slice(),i,1);
+            printf("Delete : [%s]\n",key.data());
+            break;
+        case 2: // Get
+            std::string *result;
+            list->TryGet(key,result);
+            printf("Tryget : [%s] -> [%s]\n",key.data(),(result ? result->c_str() : ""));
+            break;
+        default:
+            printf("Rand error.\n");
+            break;
+        }
+    }
+    list->Print();
+    delete list;
+    delete mng_;
+}
+
+void MultilistTest(){
+    leveldb::Options options_;
+    const leveldb::InternalKeyComparator cmp(options_.comparator);
+    leveldb::MultiTable mem_(cmp,100);
+    leveldb::MemTable * first = new leveldb::MemTable(cmp);
+    first->Ref();
+    mem_.PushMemTable(first);
+
+    Randomizer R;
+    Randomizer valueGenerator;
+    valueGenerator.setStringMode(64);
+    R.setStringMode(16);
+
+    std::string commonString = "";
+    int commonLength = 0;
+    for (int i = 0; i < 200000000; ++i){
+        if (i % 2000000 == 0){
+            commonLength = rand() % 4;
+            R.setStringMode(commonLength);
+            commonString = R.randomString();
+            for (int j = 0; j < 1000; ++j)
+                printf("===== Length = %d, String = %s =====\n",commonLength,commonString.c_str());
+            R.setStringMode(16);
+        }
+
+        char* key = new char[R.stringLength+1];
+        memcpy(key,commonString.c_str(),commonLength);
+        memcpy(key+commonLength,R.randomString().c_str(),R.stringLength-commonLength);
+//        memcpy(key,R.randomString().c_str(),R.stringLength);
+        key[R.stringLength] = 0;
+//        printf("Inserting key : [%s]\n",key);
+        mem_.Add(i,leveldb::kTypeValue,leveldb::Slice(key,R.stringLength),leveldb::Slice(valueGenerator.randomString().c_str(),valueGenerator.stringLength));
+        if (mem_.SizeOfLargestMemtable() >= 1048576 * 2){
+            leveldb::MemTable* imm_ = mem_.PopLargestMemTable();
+            imm_->Unref();
+        }
+        if (i % 100000 == 0){
+            printf("%8d Inserted.\n",i);
+            leveldb::Iterator * iter = mem_.NewIterator();
+            for (iter->SeekToFirst(); iter->Valid(); iter->Next()){
+
+            }
+
+        }
+        delete[] key;
+    }
+}
+
+void Delay_Test() {
+    FILE* alice = fopen("/home/sagitrs/git/leveldb-1.20b/alice.txt","r");
+    std::string s;
+    char buf[4096];
+    while (!feof(alice)){
+        size_t r = fread(buf,1,1024,alice);
+        if (r > 0)
+            s += std::string(buf,r);
+        if (r < 1024)
+            break;
+    }
+    std::vector<nvFileHandle> blocks;
+    for (int i = 0; i < 1000000; ++i){
+        char filename[256];
+        sprintf(filename,"%d.txt",i);
+        nvFileHandle p = lib->fopen(filename,"w");
+        lib->fwrite(s.c_str(),1,s.size(),p);
+        lib->fclose(p);
+        blocks.push_back(p);
+        if (blocks.size() >= 100){
+            printf("%d file written.\n",i);
+            for (size_t k = 0; k < blocks.size(); ++k){
+                nvFileHandle f = blocks[k];
+                //lib->remove(lib->fileSystem()->info_[f]->name().c_str());
+            }
+            blocks.clear();
+        }
+    }
+    lib->print();
+}
+
+void Trie_Test(){
+    Randomizer R;
+    Trie<int>* trie = new Trie<int>;
+    int p[256];
+    char buf[256];
+    int* result;
+    for (int i = 0; i < 10000; ++i){
+        int x = rand() % 256;
+        p[x] = x;
+        size_t l = R.randomInt() % 16 + 1;
+        R.setStringMode(l);
+        string key = R.randomString();
+        const char* buf = key.c_str();
+        switch (rand() % 3){
+        case 0: //Insert
+            printf("Insert [%s] -> %d\n",buf,p[x]);
+            trie->Insert(buf,p+x);
+            break;
+        case 1: //Delete
+            printf("Delete [%s]",buf);
+            printf(" -> %s\n", (trie->Delete(buf) ? "Succeed" : "Failed"));
+            break;
+        case 2: //FuzzyFind
+            printf("FuzzyFind [%s] -> ",buf);
+            result = trie->FuzzyFind(buf);
+            if (result) printf("%d\n",*result);
+            else printf("x\n");
+            break;
+        }
+        trie->Print();
+
+    }
+    trie->Print();
+}
+void NVMemTable_Test () {
+
+    NVM_Manager* mng = new NVM_Manager(1 << 28);
+    leveldb::Options options;
+    leveldb::nvMultiTable_MemTable table(options,"/home/sagitrs/test");
+    table.Init();
+
+    Randomizer R(0xdeadbeef);
+    Randomizer valueGenerator(0xdeadbeef);
+    valueGenerator.setStringMode(16);
+    R.setStringMode(6);
+
+    std::string commonString = "";
+    int commonLength = 0;
+    for (int i = 0; i < 100000; ++i) {
+        if (i % 2000000 == 0){
+            commonLength = rand() % 4;
+            R.setStringMode(commonLength);
+            commonString = R.randomString();
+            for (int j = 0; j < 10; ++j)
+                printf("===== Length = %d, String = %s =====\n",commonLength,commonString.c_str());
+            R.setStringMode(6);
+        }
+
+        char* key = new char[R.stringLength+1];
+        memcpy(key,commonString.c_str(),commonLength);
+        memcpy(key+commonLength,R.randomString().c_str(),R.stringLength-commonLength);
+//        memcpy(key,R.randomString().c_str(),R.stringLength);
+        key[R.stringLength] = 0;
+//        printf("Inserting key : [%s]\n",key);
+        table.Add(i, leveldb::kTypeValue,
+                  leveldb::Slice(key,R.stringLength),
+                  leveldb::Slice(valueGenerator.randomString()));
+
+        if (i % 10000 == 0) {
+            printf("%8d Inserted.\n",i);
+        }
+
+        if (table.StorageUsage() >= options.TEST_max_nvm_buffer_size) {
+            leveldb::MemTable* mem = table.Pop();
+            mem->Unref();
+        }
+        delete[] key;
+    }
+    table.Print();
+}
+void NVTrie_Test() {
+
+    NVM_Manager* mng = new NVM_Manager(1 << 28);
+    nvTrie main(mng);
+    main.Insert("Hello", 1);
+    main.Insert("Holy", 2);
+    main.Insert("Helon", 3);
+    main.Insert("World", 4);
+    main.Print("");
+    printf("Hello = %llu\n", main.Find("Hello"));
+    printf("Holy = %llu\n", main.Find("Holy"));
+    printf("Helon = %llu\n", main.Find("Helon"));
+    printf("World = %llu\n", main.Find("World"));
+
+    main.Delete("Holy");
+    main.Delete("Hello");
+    main.Delete("Helon");
+    main.Delete("World");
+    printf("Hello = %llu\n", main.Find("Hello"));
+    printf("Holy = %llu\n", main.Find("Holy"));
+    printf("Helon = %llu\n", main.Find("Helon"));
+    printf("World = %llu\n", main.Find("World"));
+    main.Print("");
+}
+
+struct NVM_Delay_Simulator {
+    const ull w_delay;
+    const ull r_delay;
+    ull w_rest, r_rest;
+    std::mutex mutex_;
+    const ull cache_line;
+    const ull flush_limit;
+
+    void nanodelay2(ull nanosecond) {
+         struct timespec req, rem;
+         static const int least_delayer = 2;
+         if (nanosecond < least_delayer) return;
+         req.tv_nsec = nanosecond - least_delayer;
+         req.tv_sec = 0;
+         //nanosleep(&req,&rem);
+    }
+    NVM_Delay_Simulator(const NVM_Options& options):
+        w_delay(options.write_delay_per_cache_line),
+        r_delay(options.read_delay_per_cache_line),
+        w_rest(0), r_rest(0),
+        cache_line(options.cache_line_size),
+        flush_limit(cache_line * 1000)
+    {
+    }
+    inline void readDelay(ull operation){
+        r_rest += operation;
+        if (r_rest >= flush_limit) {
+            //mutex_.lock();
+            nanodelay2(r_rest * r_delay / cache_line);
+            r_rest -= flush_limit;
+            //mutex_.unlock();
+        }
+    }
+
+    inline void writeDelay(ull operation){
+        w_rest += operation;
+        if (w_rest >= flush_limit) {
+            //mutex_.lock();
+            nanodelay2(w_rest * w_delay / cache_line);
+            w_rest -= flush_limit;
+            //mutex_.unlock();
+        }
+    }
+
+};
+
+void RWSpeed_Test() {
+    NVM_Manager * mng_ = new NVM_Manager(1 << 20);
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    ull time1 = GetMicros();
+    nvAddr tmp = mng_->Allocate(4096);
+    byte buf[128];
+    Randomizer R; R.setRandLimit(0, 4000);
+    for (ull i = 0; i < 1000000; ++i) {
+        mng_->read(buf, tmp + R.randomInt(), 64);
+    }
+    ull time2 = GetMicros();
+    printf("Read Time = %.2f ms / 1GB\n", (double)(time2 - time1) *16 / 1000 );
+    for (ull i = 0; i < 1000000; ++i) {
+        mng_->write(tmp + R.randomInt(), buf, 64);
+    }
+    time1 = GetMicros();
+    printf("Write Time = %.2f ms / 1GB\n", (double)(time1 - time2) *16 / 1000 );
+}
+
+void Delay(ull total, ull each) {
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    ull times = total / each;
+    ull time1 = GetMicros();
+
+    for (int i = 0; i < times; ++i)
+        nanodelay(each);
+    ull time2 = GetMicros();
+    ull time0 = (time2 - time1) * 1000;
+    ull s = total / 1000000000;
+    ll more = time0 - total;
+    printf("Test : %llu (ns) * %llu (op) = %llu (s)\n", times, each, total / 1000000000);
+    printf("Total Time : %llu - %lld = %lld\n", time0, total, more);
+    printf("%lld / %llu = %.6f (ns / op)\n", more, times, (double)more / times);
+
+}
+void MSL_Test() {
+    NVM_Manager * mng_ = new NVM_Manager(4 * MB);
+    leveldb::CachePolicy cp(2 * MB, 2 * MB, 16 * MB);
+    leveldb::MixedSkipList msl(mng_, cp);
+
+    Randomizer R;
+    Randomizer valueGenerator;
+    valueGenerator.setStringMode(64);
+    R.setStringMode(2);
+    for (int i = 0; i < 2000; ++i){
+
+        char* key = new char[R.stringLength+1];
+        memcpy(key,R.randomString().c_str(),R.stringLength);
+//        memcpy(key,R.randomString().c_str(),R.stringLength);
+        key[R.stringLength] = 0;
+//        printf("Inserting key : [%s]\n",key);
+        msl.Add(leveldb::Slice(key,R.stringLength),
+                leveldb::Slice(valueGenerator.randomString().c_str(),
+                               valueGenerator.stringLength),
+                0, 0);
+        delete[] key;
+    }
+    msl.Print();
+}
+const int DB_BASE_SIZE = 100000, ADD_BASE_SIZE = 250000,
+          DEL_BASE_SIZE = 250000, FIND_BASE_SIZE = 250000;
+
+void CTrie_Test(){
+    printf("CTrie Speed Test:\n");
+    char s[] = "Hello,world!";
+    leveldb::CTrie<int> * main = new leveldb::CTrie<int>(0);
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    Randomizer keyGenerator(0xdeadbeef);
+    Randomizer valueGenerator(0xdeadbeef);
+    Randomizer R(0xdeadbeef);
+    keyGenerator.setStringMode(16);
+    valueGenerator.setStringMode(64);
+    leveldb::CTrie<int>::CTrieIterator *iter = main->NewIterator(), *next = main->NewIterator();
+
+    std::vector<string> DB;
+    int DB_SIZE = 2 * DB_BASE_SIZE, ADD_SIZE = ADD_BASE_SIZE,
+            DEL_SIZE = DEL_BASE_SIZE, FIND_SIZE = FIND_BASE_SIZE;
+    for (int i = 0; i < DB_SIZE; ++i)
+        DB.push_back(keyGenerator.randomString());
+
+    ull time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    for (int i = 0; i < ADD_SIZE; ++i) {
+        main->Add(DB[R.randomInt()], i);
+        main->Delete(DB[R.randomInt()]);
+    }
+
+    ull time2 = GetMicros();
+    ull time = time2 - time1;
+    ull data = 2 * ADD_SIZE * (16 + 16);
+    printf("Insert / Delete : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           2ULL * ADD_SIZE * 1000000 / time );
+
+
+    time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    int x; bool equal;
+    for (int i = 0; i < FIND_SIZE; ++i)
+        main->FuzzyFind(DB[R.randomInt()]);
+
+    time2 = GetMicros();
+    time = time2 - time1;
+    data = FIND_SIZE * (16 + 16);
+    printf("Query : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           1ULL * FIND_SIZE * 1000000 / time );
+/*
+    next->SeekToFirst(); next->Next();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        string key = iter->Key(), key2 = next->Valid() ? next->Key() : "";
+        int value = iter->Data();
+        assert(!next->Valid()|| key < next->Key());
+        printf("%s : %d\n", key.c_str(), value);
+        if (next->Valid()) next->Next();
+    }*/
+}
+void Trie_SpeedTest(){
+    printf("Trie Speed Test:\n");
+    char s[] = "Hello,world!";
+    Trie<int> * main = new Trie<int>;
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    Randomizer keyGenerator(0xdeadbeef);
+    Randomizer valueGenerator(0xdeadbeef);
+    Randomizer R(0xdeadbeef);
+    keyGenerator.setStringMode(16);
+    valueGenerator.setStringMode(64);
+    Trie<int>::Iterator *iter = main->NewIterator(), *next = main->NewIterator();
+
+    std::vector<string> DB;
+    int DB_SIZE = 2 * DB_BASE_SIZE / 10, ADD_SIZE = ADD_BASE_SIZE / 10,
+            DEL_SIZE = DEL_BASE_SIZE / 10, FIND_SIZE = FIND_BASE_SIZE / 10;
+    for (int i = 0; i < DB_SIZE; ++i)
+        DB.push_back(keyGenerator.randomString());
+
+    ull time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    for (int i = 0; i < ADD_SIZE; ++i) {
+        main->Insert(DB[R.randomInt()], &i);
+        main->Delete(DB[R.randomInt()]);
+    }
+
+    ull time2 = GetMicros();
+    ull time = time2 - time1;
+    ull data = 2 * ADD_SIZE * (16 + 16);
+    printf("Insert / Delete : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           2ULL * ADD_SIZE * 1000000 / time );
+
+
+    time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    int x; bool equal;
+    for (int i = 0; i < FIND_SIZE; ++i)
+        main->FuzzyFind(DB[R.randomInt()]);
+
+    time2 = GetMicros();
+    time = time2 - time1;
+    data = FIND_SIZE * (16 + 16);
+    printf("Query : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           1ULL * FIND_SIZE * 1000000 / time );
+/*
+    next->SeekToFirst(); next->Next();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        string key = iter->Key(), key2 = next->Valid() ? next->Key() : "";
+        int value = iter->Data();
+        assert(!next->Valid()|| key < next->Key());
+        printf("%s : %d\n", key.c_str(), value);
+        if (next->Valid()) next->Next();
+    }*/
+}
+void nvSkiplist_SpeedTest(NVM_Manager* mng){
+    printf("nvSkiplist Speed Test:\n");
+    char s[] = "Hello,world!";
+
+    leveldb::CachePolicy cp(64*MB, 16*MB, 256*MB);
+    leveldb::nvSkiplist* main = new leveldb::nvSkiplist(mng, cp);
+    //Trie<int> * main = new Trie<int>;
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    Randomizer keyGenerator(0xdeadbeef);
+    Randomizer valueGenerator(0xdeadbeef);
+    Randomizer R(0xdeadbeef);
+    keyGenerator.setStringMode(16);
+    valueGenerator.setStringMode(64);
+
+    std::vector<string> DB;
+    int DB_SIZE = 2 * DB_BASE_SIZE, ADD_SIZE = ADD_BASE_SIZE,
+            DEL_SIZE = DEL_BASE_SIZE, FIND_SIZE = FIND_BASE_SIZE;
+    for (int i = 0; i < DB_SIZE; ++i)
+        DB.push_back(keyGenerator.randomString());
+
+    ull time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    for (int i = 0; i < ADD_SIZE; ++i) {
+        main->Insert(DB[R.randomInt()], DB[R.randomInt()], 0, 0);
+        main->Insert(DB[R.randomInt()], DB[R.randomInt()], 0, 1);
+    }
+    ull time2 = GetMicros();
+    ull time = time2 - time1;
+    ull data = 2 * ADD_SIZE * (16 + 16);
+    printf("Insert / Delete : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           2ULL * ADD_SIZE * 1000000 / time );
+
+
+    time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    int x; bool equal;
+    string value; leveldb::Status status;
+    int total = 0;
+    for (int i = 0; i < FIND_SIZE; ++i)
+        total += main->Get(DB[R.randomInt()], &value, &status);
+
+    time2 = GetMicros();
+    time = time2 - time1;
+    data = FIND_SIZE * (16 + 16);
+    printf("Query : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           1ULL * FIND_SIZE * 1000000 / time );
+    delete main;
+/*
+    next->SeekToFirst(); next->Next();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        string key = iter->Key(), key2 = next->Valid() ? next->Key() : "";
+        int value = iter->Data();
+        assert(!next->Valid()|| key < next->Key());
+        printf("%s : %d\n", key.c_str(), value);
+        if (next->Valid()) next->Next();
+    }*/
+}
+void MixedSkiplist_SpeedTest(NVM_Manager* mng){
+    printf("MixedSkiplist Speed Test:\n");
+    char s[] = "Hello,world!";
+
+    leveldb::CachePolicy cp(64*MB, 16*MB, 256*MB);
+    leveldb::MixedSkipList* main = new leveldb::MixedSkipList(mng, cp);
+    //Trie<int> * main = new Trie<int>;
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    Randomizer keyGenerator(0xdeadbeef);
+    Randomizer valueGenerator(0xdeadbeef);
+    Randomizer R(0xdeadbeef);
+    keyGenerator.setStringMode(16);
+    valueGenerator.setStringMode(64);
+    leveldb::Iterator* next = main->NewIterator(), *iter = main->NewIterator();
+
+
+    std::vector<string> DB;
+    int DB_SIZE = 2 * DB_BASE_SIZE, ADD_SIZE = ADD_BASE_SIZE,
+            DEL_SIZE = DEL_BASE_SIZE, FIND_SIZE = FIND_BASE_SIZE;
+    for (int i = 0; i < DB_SIZE; ++i)
+        DB.push_back(keyGenerator.randomString());
+
+    ull time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    for (int i = 0; i < ADD_SIZE; ++i) {
+        main->Insert(DB[R.randomInt()], DB[R.randomInt()], 0, 0);
+        main->Insert(DB[R.randomInt()], DB[R.randomInt()], 0, 1);
+    }
+
+    ull time2 = GetMicros();
+    ull time = time2 - time1;
+    ull data = 2 * ADD_SIZE * (16 + 16);
+    printf("Insert / Delete : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           2ULL * ADD_SIZE * 1000000 / time );
+
+
+    time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    int x; bool equal;
+    string value; leveldb::Status status;
+    int total = 0;
+    for (int i = 0; i < FIND_SIZE; ++i)
+        total += main->Get(DB[R.randomInt()], &value, &status);
+
+    time2 = GetMicros();
+    time = time2 - time1;
+    data = FIND_SIZE * (16 + 16);
+    printf("Query : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           1ULL * FIND_SIZE * 1000000 / time );
+    delete main;
+
+    next->SeekToFirst(); next->Next();
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        leveldb::Slice key = iter->key(), key2 = next->Valid() ? next->key() : "";
+        //int value = iter->Data();
+        assert(!next->Valid() || key.compare(key2) < 0);
+        //printf("%s\n", key.ToString().c_str());
+        if (next->Valid()) next->Next();
+    }
+}
+void MemTable_SpeedTest(){
+    printf("SkipList Speed Test:\n");
+    char s[] = "Hello,world!";
+
+    leveldb::CachePolicy cp(64*MB, 16*MB, 256*MB);
+    leveldb::Options options_;
+    const leveldb::InternalKeyComparator cmp(options_.comparator);
+    leveldb::MemTable * main = new leveldb::MemTable(cmp);
+    main->Ref();
+    //Trie<int> * main = new Trie<int>;
+    auto GetMicros = [] () {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    };
+    Randomizer keyGenerator(0xdeadbeef);
+    Randomizer valueGenerator(0xdeadbeef);
+    Randomizer R(0xdeadbeef);
+    keyGenerator.setStringMode(16);
+    valueGenerator.setStringMode(64);
+    leveldb::Iterator* next = main->NewIterator(), *iter = main->NewIterator();
+
+
+    std::vector<string> DB;
+    int DB_SIZE = 2 * DB_BASE_SIZE, ADD_SIZE = ADD_BASE_SIZE,
+            DEL_SIZE = DEL_BASE_SIZE, FIND_SIZE = FIND_BASE_SIZE;
+    for (int i = 0; i < DB_SIZE; ++i)
+        DB.push_back(keyGenerator.randomString());
+
+    ull time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    for (int i = 0; i < ADD_SIZE; ++i) {
+        main->Add(2*i, leveldb::ValueType::kTypeValue,
+                  DB[R.randomInt()], DB[R.randomInt()]);
+        main->Add(2*i+1, leveldb::ValueType::kTypeDeletion,
+                  DB[R.randomInt()], DB[R.randomInt()]);
+    }
+
+    ull time2 = GetMicros();
+    ull time = time2 - time1;
+    ull data = 2 * ADD_SIZE * (16 + 16);
+    printf("Insert / Delete : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           2ULL * ADD_SIZE * 1000000 / time );
+
+
+    time1 = GetMicros();
+    R.setRandLimit(0, DB_SIZE);
+    int x; bool equal;
+    string value; leveldb::Status status;
+    int total = 0;
+    for (int i = 0; i < FIND_SIZE; ++i)
+        total += main->Get(leveldb::LookupKey(DB[R.randomInt()],0), &value, &status);
+
+    time2 = GetMicros();
+    time = time2 - time1;
+    data = FIND_SIZE * (16 + 16);
+    printf("Query : %.2f MB/s (%llu op /s)\n", (double)data / time,
+           1ULL * FIND_SIZE * 1000000 / time );
+    //delete main;
+    main->Unref();
+}
+int main(){
+    //alice_test();
+    //Skiplist_test();
+    //nvlist_test();
+    //InternalKeyComparator *cmp;
+    //nvMemTable *memtable;
+    //SkiplistAdvanced();
+    //MultilistTest();
+    //Delay_Test();
+    //Trie_Test();
+    //NVTrie_Test();
+    //RWSpeed_Test();
+    //MSL_Test();
+
+    CTrie_Test();
+    Trie_SpeedTest();
+    MemTable_SpeedTest();
+    NVM_Manager* mng = new NVM_Manager(1500 * MB);
+    nvSkiplist_SpeedTest(mng);
+    MixedSkiplist_SpeedTest(mng);
+    return 0;
+}
+
+/*
+void Skiplist_test(){
+    //fprintf(stderr,"Hello,world!\n");
+    Skiplist S;
+    Randomizer R;
+    Timer T,T0;
+    R.setStringMode(32);
+    T.start();
+    double totalTime = 0;
+    int reportLevel = 1;
+    const int TOTAL_COUNT = 3000001;
+    for (int i=0;i<TOTAL_COUNT;++i){
+        Key key;
+        key.key_ = R.randomString();
+        key.value_ = R.randomString();
+        if (i % 10000 == 0) {
+            double time = T.stop();
+            totalTime += time;
+            if (i > (1<<reportLevel)){
+                printf("Time used to insert (%d,%d): %.3f\n",S.size_,S.height_,time);
+                printf("Average time : %.3f us\n",totalTime * 1000000 / i);
+                reportLevel += 1;
+            }
+//            printf("Inserting %7d : (%s,%s)\n",i,key.key_.c_str(),key.value_.c_str());
+        }
+        S.insert(key);
+//        S.println();
+    }
+    printf("Time used to insert (%d,%d): %.3f\n",S.size_,S.height_,time);
+    printf("Average time : %.3f us\n",totalTime * 1000000 / TOTAL_COUNT);
+    reportLevel += 1;
+    printf("Finished.\n");
+    S.printState();
+    printf("Average compare cost : %d / %d = %.4f\n",collapseTotal, collapseCount,(double)collapseTotal / collapseCount);
+}
+
+void SkiplistAdvanced(){
+    auto equaller = [] (char* const a, char* const b) -> int {
+        size_t la = strlen(a), lb = strlen(b);
+        if (la != lb)
+            return (la < lb ? -1 : 1);
+        return memcmp(a,b,la);
+    };
+    StringComparator cmp;
+    Arena * arena = new Arena;
+    StringSkipList sl(cmp,arena);
+    srand(time(0));
+    R.setRandLimit(16,48);
+    static const ull reportSize = 100000;
+    ull nextReport = reportSize;
+    while (1){
+        int length = rand() % 48 + 16;
+        R.setStringMode(length);
+        char* s = static_cast<char*>(arena->alloc(length+1));
+        memcpy(s,R.randomString().c_str(),static_cast<size_t>(length));
+        s[length] = 0;
+        //printf("%d[%s]\n",length,s);
+        if (sl.Contains(s)){
+            arena->dispose(s,length+1);
+            continue;
+        }
+        sl.Insert(s);
+        if (arena->size_ > 100000000) {
+            printf("Cut!\n");
+            StringSkipList *imm_ = new StringSkipList(cmp,arena);
+            char from[] = "";
+            sl.Cut(imm_, from, 100000, equaller);
+            delete imm_;
+            nextReport = arena->size_ - reportSize;
+        }
+        if (arena->size_ >= nextReport){
+            printf("Arena size : %llu.\n",arena->size_);
+            nextReport += reportSize;
+        }
+    }
+    printForStringSkipList(sl);
+}
+*/
