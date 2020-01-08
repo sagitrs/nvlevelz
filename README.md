@@ -176,7 +176,7 @@ clients probably won't use directly
 ------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------
 
-**About NVLevel**
+**NVLevel**
 # NVM Simulation (Read/Write Latency)
 NVM Simulator has two trigger managing read and write delay respectively in "nvm_library/sysnvm.h"(naming NVDIMM_ENABLED and NO_READ_DELAY).
 Comment out the corresponding "#define" statement if you need to turn these switches off.
