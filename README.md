@@ -172,3 +172,15 @@ in util/env_posix.cc
 
 * **include/table.h, include/table_builder.h**: Lower-level modules that most
 clients probably won't use directly
+
+------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------
+
+**About NVLevel**
+# NVM Simulation (Read/Write Latency)
+NVM Simulator has two trigger managing read and write delay respectively in "nvm_library/sysnvm.h"(naming NVDIMM_ENABLED and NO_READ_DELAY).
+Comment out the corresponding "#define" statement if you need to turn these switches off.
+
+# Variables of NVLevel
+Variables start with "TEST_" in util/options.cc are used to control performance of nvlevel.
+Some of the variables have been abandoned, try not to modify the variables not mentioned in the paper.
