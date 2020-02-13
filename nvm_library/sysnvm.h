@@ -12,6 +12,8 @@
 typedef void (*Cleaner)(byte*);
 
 #define MaxBlockSize (512 * MB)
+//@@@@@
+#define NVDIMM_ENABLED
 //#define NVDIMM_ENABLED
 #define NO_READ_DELAY
 struct NVM_MemoryBlock;

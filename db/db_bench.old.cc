@@ -131,9 +131,9 @@ static bool FLAGS_reuse_logs = false;
 
 // Use the db with the following name.
 #ifdef NVDIMM_ENABLED
-static const char* FLAGS_db = "/home/user/test_leveldb";
+static const char* FLAGS_db = "/home/jiyoung/nvlevelz/test_leveldb_nvm";
 #else
-static const char* FLAGS_db = "/home/sagitrs/test_leveldb";
+static const char* FLAGS_db = "/home/jiyoung/nvlevelz/test_leveldb";
 #endif
 namespace leveldb {
 

@@ -186,7 +186,7 @@ struct SagBenchmark {
         global_request_distribution_(Zipfian), global_insert_order_(Hashed), random_full_range_(false),
         operation_count_(200), old_record_count_(100), new_record_count_(10), dbsize_(0),
         max_scan_length_(100), scan_length_distribution_(Uniform),
-        //db_path_("/home/sagitrs/test_leveldb/")
+        //db_path_("/home/jiyoung/nvlevelz/test_leveldb/")
         arena_(), value_generator_(), key_generator_(nullptr), valuesize_generator_(nullptr),
         rand_(nullptr),// shuffle_rand_(1),
         oprs_(nullptr)

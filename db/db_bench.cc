@@ -73,8 +73,10 @@ static const char* FLAGS_benchmarks =
 
 // Number of key/values to place in database
 //static int FLAGS_num = 1000000;
-static ull FLAGS_record = 16 * MB;
-static ull FLAGS_operation = 8 * MB;
+//static ull FLAGS_record = 16 * MB;
+static ull FLAGS_record = 4 * MB;
+//static ull FLAGS_operation = 8 * MB;
+static ull FLAGS_operation = 4 * MB;
 static bool FLAGS_random_warmup = true;
 
 static double FLAGS_pre = 0.0;
@@ -127,11 +129,12 @@ static bool FLAGS_use_existing_db = false;
 // If true, reuse existing log/MANIFEST files when re-opening a database.
 static bool FLAGS_reuse_logs = false;
 
+//@@@@@setting db_path
 // Use the db with the following name.
 #ifdef NVDIMM_ENABLED
-static const char* FLAGS_db = "/home/user/test_leveldb";
+static const char* FLAGS_db = "/home/jiyoung/nvlevelz/test_leveldb_nvm";
 #else
-static const char* FLAGS_db = "/home/sagitrs/test_leveldb";
+static const char* FLAGS_db = "/home/jiyoung/nvlevelz/test_leveldb";
 #endif
 namespace leveldb {
 
@@ -1025,9 +1028,12 @@ class Benchmark {
       //bm.SetRandomFullRange(false);
       bm.SetKeyValueSize(16, FLAGS_value_size, SagBenchmark::Distribution::Static);
       bm.SetOperationCount(operation_count, record_count);
+      //@@@@@setting the rate of read and write for each YCSB workloads
       bm.SetTypeDistribution(read, insert, update, scan, readmodifywrite);
       bm.SetPreGenerate(false);
       bm.Flush();
+
+      //@@@@@changing the pointer of pos_ in data_
       bm.Generate();
       //bm.SeekToWarmupFirst();
 
@@ -1043,6 +1049,7 @@ class Benchmark {
       ReadOptions options;
 
       thread->stats.Researt();
+      //@@@@@setting start_ to check time
       for (ull i = 0; i < operation_count; ++i) {
           const SagBenchmark::Operation& op = bm[i];
           sprintf(key, "%016llu", op.key_);
